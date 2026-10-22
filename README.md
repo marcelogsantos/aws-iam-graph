@@ -37,7 +37,7 @@ Cada sinal também gera uma **mitigação sugerida**, exibida junto no painel de
 | `collector.py` | coletor completo (boto3 puro, mitigações incluídas) |
 | `site/index.html` | visualizador (Cytoscape.js, filtros, painel de detalhes) |
 | `report_pdf.py` | relatório tabular em PDF (reportlab) |
-| `ec2-portable/` | versão compacta pra EC2 com systemd timer e instance role |
+| `deploy/` | units systemd (timer diário 07:00) pra rodar o coletor como serviço |
 
 ## Rodando
 
@@ -58,9 +58,12 @@ cd site && python3 -m http.server 8082
 ## Deploy na EC2 (como serviço)
 
 ```bash
-sudo cp ec2-portable/collector.py /opt/iam-graph/
-sudo cp ec2-portable/site/* /var/www/iam-graph/
-sudo cp ec2-portable/iam-graph-collector.{service,timer} /etc/systemd/system/
+sudo pip3 install boto3
+sudo mkdir -p /opt/iam-graph /var/www/iam-graph
+sudo cp collector.py /opt/iam-graph/
+sudo cp site/* /var/www/iam-graph/
+sudo cp deploy/iam-graph-collector.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl enable --now iam-graph-collector.timer   # roda diário 07:00
 ```
 

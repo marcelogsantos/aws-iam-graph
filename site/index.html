@@ -127,7 +127,6 @@ fetch('graph.json?v=' + Date.now()).then(r=>r.json()).then(G => {
     layout: { name:'cose', animate:false, padding:40, idealEdgeLength:110, nodeRepulsion:9000 },
     wheelSensitivity: .25
   });
-  window.cyInstance = cy;
 
   // Filtros
   const filters = [
