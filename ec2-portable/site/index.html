@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IAM Graph — Visão Executiva de Roles AWS</title>
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<style>
+  :root {
+    --bg:#0b1220; --panel:#111a2e; --border:#223050; --text:#e8eef8;
+    --muted:#8aa0bf; --red:#ff5d5d; --orange:#ffb84d; --green:#38c98b; --blue:#4c8dff;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  header { padding:18px 28px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  header h1 { font-size:1.15rem; font-weight:700; }
+  header .sub { color:var(--muted); font-size:.85rem; }
+  .kpis { display:flex; gap:14px; margin-left:auto; flex-wrap:wrap; }
+  .kpi { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 16px; min-width:100px; }
+  .kpi .n { font-size:1.4rem; font-weight:700; }
+  .kpi .t { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .kpi.red .n { color:var(--red); } .kpi.org .n { color:var(--orange); } .kpi.grn .n { color:var(--green); } .kpi.blu .n { color:var(--blue); }
+  .filters { padding:12px 28px; display:flex; gap:10px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+  .filters button { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:20px; padding:7px 16px; cursor:pointer; font-size:.85rem; }
+  .filters button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .layout { display:grid; grid-template-columns: 1fr 340px; height:calc(100vh - 130px); }
+  #cy { width:100%; height:100%; }
+  .side { border-left:1px solid var(--border); padding:20px; overflow-y:auto; }
+  .side h2 { font-size:1rem; margin-bottom:12px; }
+  .side .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:.75rem; margin-right:6px; margin-bottom:8px; }
+  .riskbar { height:8px; background:#0d1424; border-radius:4px; overflow:hidden; margin:10px 0 4px; }
+  .riskbar > div { height:100%; }
+  .kv { font-size:.88rem; line-height:1.8; }
+  .kv b { color:var(--muted); font-weight:500; }
+  .kv code { background:#0d1424; padding:2px 6px; border-radius:4px; font-size:.8rem; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+  .chip { background:#0d1424; border:1px solid var(--border); border-radius:4px; padding:3px 8px; font-family:monospace; font-size:.75rem; }
+  .legend { display:flex; gap:16px; padding:10px 28px; font-size:.8rem; color:var(--muted); border-top:1px solid var(--border); }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .side { display:none; } }
+</style>
+
+<style media="print">
+  .filters, .legend, nav { display: none !important; }
+  .layout { grid-template-columns: 1fr 1fr; height: auto; page-break-inside: avoid; }
+  #cy { height: 700px !important; }
+  body { background: #fff; }
+  .side { border: 1px solid #ddd; }
+  .kpi { border-color: #ddd; }
+  @page { size: A4 landscape; margin: 12mm; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🔒 IAM Graph — Roles AWS</h1>
+  </div>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<div class="filters" id="filters"></div>
+
+<div class="layout">
+  <div id="cy"></div>
+  <div class="side" id="detail">
+    <h2>Clique em um nó</h2>
+    <p style="color:var(--muted);font-size:.9rem">Selecione uma role, política ou serviço no grafo para ver detalhes: risco, permissões, trust, tags.</p>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--red)"></span>Risco alto (7-10)</span>
+  <span><span class="dot" style="background:var(--orange)"></span>Risco médio (4-6)</span>
+  <span><span class="dot" style="background:var(--green)"></span>Risco baixo (0-3)</span>
+  <span><span class="dot" style="background:var(--blue)"></span>Serviço AWS (trust)</span>
+  <span><span class="dot" style="background:#9aa7c7"></span>Política IAM</span>
+</div>
+
+<script>
+fetch('graph.json?v=' + Date.now()).then(r=>r.json()).then(G => {
+  const nodes = G.nodes, edges = G.edges;
+  const roles = nodes.filter(n=>n.kind==='role');
+  const high = roles.filter(r=>r.risk>=7).length;
+  const med  = roles.filter(r=>r.risk>=4 && r.risk<7).length;
+  const low  = roles.filter(r=>r.risk<4).length;
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi blu"><div class="n">${roles.length}</div><div class="t">Roles</div></div>
+    <div class="kpi red"><div class="n">${high}</div><div class="t">Risco alto</div></div>
+    <div class="kpi org"><div class="n">${med}</div><div class="t">Risco médio</div></div>
+    <div class="kpi grn"><div class="n">${low}</div><div class="t">Risco baixo</div></div>
+    <div class="kpi"><div class="n">${nodes.filter(n=>n.kind==='policy').length}</div><div class="t">Políticas</div></div>`;
+
+
+  const colorOf = n => {
+    if (n.kind==='account') return '#9aa7c7';
+    if (n.kind==='service') return '#4c8dff';
+    if (n.kind==='policy')  return '#9aa7c7';
+    if (n.kind==='user')    return '#38c98b';
+    const r = n.risk||0;
+    return r>=7 ? '#ff5d5d' : r>=4 ? '#ffb84d' : '#38c98b';
+  };
+  const sizeOf = n => n.kind==='role' ? 18+ (n.risk||0)*2 : n.kind==='account' ? 34 : n.kind==='policy' ? 12 : 16;
+
+  const cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: [
+      ...nodes.map(n => ({ data: { id: n.id, label: n.label, color: colorOf(n), size: sizeOf(n), raw: n } })),
+      ...edges.map((e,i) => ({ data: { id: 'e'+i, source: e.from, target: e.to, label: e.label||'', kind: e.kind }, style: { } }))
+    ],
+    style: [
+      { selector:'node', style: {
+        'background-color':'data(color)', 'label':'data(label)',
+        'width':'data(size)', 'height':'data(size)',
+        'font-size':9, 'color':'#cdd8ea', 'text-valign':'bottom', 'text-margin-y':6,
+        'border-width':1, 'border-color':'#223050'
+      }},
+      { selector:'edge', style: {
+        'width':1.4, 'line-color':'#2a3a5c', 'target-arrow-color':'#2a3a5c',
+        'target-arrow-shape':'triangle', 'curve-style':'bezier',
+        'label':'data(label)', 'font-size':7.5, 'color':'#6b7f9e',
+        'text-background-color':'#0b1220','text-background-opacity':1,'text-background-padding':2
+      }},
+      { selector:'edge[kind="trust"]', style: { 'line-color':'#ff5d5d', 'target-arrow-color':'#ff5d5d', 'width':2.2 } },
+      { selector:':selected', style: { 'border-width':3, 'border-color':'#fff' } }
+    ],
+    layout: { name:'cose', animate:false, padding:40, idealEdgeLength:110, nodeRepulsion:9000 },
+    wheelSensitivity: .25
+  });
+
+  // Filtros
+  const filters = [
+    {id:'all', label:'Todas'}, {id:'high', label:'Risco alto'}, {id:'med', label:'Risco médio'},
+    {id:'low', label:'Risco baixo'}, {id:'svc', label:'Só trust'}, {id:'pol', label:'Só policies'}
+  ];
+  const fdiv = document.getElementById('filters');
+  filters.forEach((f,i) => {
+    const b = document.createElement('button');
+    b.textContent = f.label; if (i===0) b.classList.add('on');
+    b.onclick = () => {
+      fdiv.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      cy.nodes().forEach(n => {
+        const raw = n.data('raw');
+        let show = true;
+        if (f.id==='high') show = raw && (raw.kind==='role' && raw.risk>=7 || raw.kind==='account');
+        if (f.id==='med')  show = raw && (raw.kind==='role' && raw.risk>=4 && raw.risk<7 || raw.kind==='account');
+        if (f.id==='low')  show = raw && (raw.kind==='role' && raw.risk<4 || raw.kind==='account');
+        if (f.id==='svc')  show = raw && (raw.kind==='service' || raw.kind==='role' || raw.kind==='account');
+        if (f.id==='pol')  show = raw && (raw.kind==='policy' || raw.kind==='role' || raw.kind==='account');
+        n.style('display', show ? 'element' : 'none');
+      });
+    };
+    fdiv.appendChild(b);
+  });
+
+  // Detail panel
+  const detail = document.getElementById('detail');
+  cy.on('tap', 'node', evt => {
+    const raw = evt.target.data('raw');
+    if (!raw) return;
+    let html = `<h2>${raw.label}</h2><div style="margin-bottom:12px">`;
+    const bcolor = raw.kind==='role' ? (raw.risk>=7?'var(--red)':raw.risk>=4?'var(--orange)':'var(--green)') : 'var(--blue)';
+    html += `<span class="badge" style="background:${bcolor};color:#0b1220">${raw.kind.toUpperCase()}</span>`;
+    if (raw.kind==='role') html += `<span class="badge" style="background:var(--panel);color:var(--text)">Risco ${raw.risk}/10</span>`;
+    html += `</div>`;
+    if (raw.kind==='role') {
+      html += `<div class="riskbar"><div style="width:${raw.risk*10}%;background:${bcolor}"></div></div>`;
+      html += `<div class="kv"><b>Quem assume (trust):</b> <code>${raw.trustee||'—'}</code></div>`;
+      if (raw.tags && Object.keys(raw.tags).length)
+        html += `<div class="kv"><b>Tags:</b> ${Object.entries(raw.tags).map(([k,v])=>`<code>${k}=${v}</code>`).join(' ')}</div>`;
+      if (raw.attached && raw.attached.length)
+        html += `<div class="kv"><b>Políticas anexadas:</b><div class="chips">${raw.attached.map(p=>`<span class="chip">${p}</span>`).join('')}</div></div>`;
+      if (raw.actions && raw.actions.length) {
+        const risky = raw.actions.filter(a=>a.includes('*')||a.startsWith('iam:')||a.startsWith('sts:'));
+        html += `<div class="kv"><b>Ações (${raw.actions.length}):</b></div><div class="chips">` +
+          raw.actions.slice(0,25).map(a=>`<span class="chip" style="${risky.includes(a)?'border-color:var(--red);color:var(--red)':''}">${a}</span>`).join('') +
+          (raw.actions.length>25?`<span class="chip">+${raw.actions.length-25} mais</span>`:'') + `</div>`;
+      }
+      if (raw.mitigations && raw.mitigations.length) {
+        html += `<h2 style="margin-top:18px;font-size:.95rem">⚠️ Riscos & Mitigações</h2>`;
+        html += raw.mitigations.map(m=>`
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+            <div style="font-size:.85rem;color:var(--red);font-weight:600;margin-bottom:5px">⚠ ${m.risco}</div>
+            <div style="font-size:.82rem;color:var(--text);line-height:1.5">🛡 ${m.mitigacao}</div>
+          </div>`).join('');
+      }
+      if (raw.resources && raw.resources.length)
+        html += `<div class="kv"><b>Recursos:</b><div class="chips">${raw.resources.slice(0,10).map(r=>`<span class="chip">${r}</span>`).join('')}</div></div>`;
+    } else if (raw.kind==='service') {
+      const tr = raw.trusted_roles || [];
+      html += `<div class="kv"><b>Roles que este serviço assume (${tr.length}):</b></div>`;
+      html += `<div class="chips">` + tr.map(r=>`<span class="chip" style="cursor:pointer" onclick="focusRole('${r.replace(/'/g,"\\'")}')">${r}</span>`).join('') + `</div>`;
+      html += `<p style="color:var(--muted);font-size:.85rem;margin-top:10px">Setas vermelhas no grafo = trust. Clique numa role acima para focá-la.</p>`;
+    } else if (raw.kind==='policy') {
+      html += `<p style="color:var(--muted);font-size:.9rem">Política IAM anexada. Clique em uma role conectada pra ver o risco combinado.</p>`;
+    }
+    detail.innerHTML = html;
+  });
+
+  // foco em role pelo nome (usado nos chips de trusted_roles)
+  window.focusRole = (name) => {
+    const n = cy.getElementById('role:'+name);
+    if (!n || n.length === 0) return;
+    cy.$(':selected').unselect();
+    n.select();
+    cy.animate({ center: { els: n, fittedEles: cy.elements() }, zoom: 1.6 }, { duration: 500 });
+    n.trigger('tap');
+  };
+});
+</script>
+</body>
+</html>

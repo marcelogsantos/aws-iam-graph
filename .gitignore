@@ -1,0 +1,21 @@
+
+# dados gerados (colete com o collector.py)
+site/graph.json
+graph_public.json
+
+# artefatos
+*.zip
+*.tgz
+*.pdf
+__pycache__/
+*.pyc
+
+# ambiente
+.env
+.venv/
+venv/
+
+# credenciais ( nunca commitar)
+*.pem
+*credentials*
+.aws/

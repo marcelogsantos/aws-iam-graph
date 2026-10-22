@@ -1,0 +1,10 @@
+[Unit]
+Description=IAM Graph collector (roles AWS)
+After=network-online.target
+
+[Service]
+Type=oneshot
+# EC2 instance role (assume-role) — boto3_creds automáticos
+ExecStart=/usr/bin/python3 /opt/iam-graph/collector.py /var/www/iam-graph
+User=ec2-user
+WorkingDirectory=/opt/iam-graph
